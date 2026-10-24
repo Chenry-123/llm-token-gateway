@@ -1,0 +1,17 @@
+.venv/
+logs/
+__pycache__/
+*.pyc
+.env
+
+# 临时输出（探针、环境检查等），不要提交
+_*.txt
+_*.log
+_*.py
+*.key
+
+# 生成产物（可再生的，不提交）
+dashboard.html
+
+# 开发期脚手架归档（可逆，不提交）
+_scrap/

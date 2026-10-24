@@ -1,0 +1,107 @@
+{
+  "_说明": [
+    "listen         网关自己监听在哪。客户端要填的 Base URL 就是 http://127.0.0.1:8317/v1（OpenAI 协议）或 http://127.0.0.1:8317（Anthropic 协议）。",
+    "gateway_keys   客户端要带给网关的 key。这不是上游厂商的 key，是我们自己发的一把本地 key。换了机器或者要给别人用，改成别的字符串。",
+    "models         映射表：客户端请求的模型名 → 真正发给哪家上游、用哪个真实模型。",
+    "  protocol     这个上游说的是哪种协议。和进来的路由协议一致 → 纯透传；不一致 → 走 convert.py 做协议转换（当前只支持非流式 anthropic→openai）。",
+    "  base_url     上游根地址。网关会拼上协议该有的子路径。",
+    "  api_key_env  上游 key 存在哪个**环境变量**里。",
+    "               ！这里只写变量名，不写 key 本身 —— 因为这份文件要开源上 GitHub。",
+    "  price_per_million  每百万 token 的单价（元）。qwen-plus 已核对（2026-09-22，华北2北京）：输入 0.8、输出 2.0（非思考模式；思考模式输出是 8 元，开了 enable_thinking 要改这里）。缓存价按百炼【隐式缓存】规则（2026-09-24 核实官方文档）：命中=输入价 20%、创建=输入价 100%（无溢价）。注意：显式缓存（主动传 cache_control）才是命中 10%、创建 125%，我们目前用的是隐式缓存，别混。隐式缓存最小可缓存长度 1024 token。价格会变，改这里即可重算历史。",
+    "gw-mock-*      自验用的假上游，由 selftest.py 启动。没有真实 key 也能跑通全链路。"
+  ],
+
+  "listen": { "host": "127.0.0.1", "port": 8317 },
+
+  "gateway_keys": ["sk-gw-local-dev"],
+
+  "log": { "path": "logs/usage.jsonl" },
+
+  "stream": {
+    "inject_include_usage": true,
+    "_说明": "OpenAI 协议下，网关会往请求体里加 stream_options.include_usage=true。若某个客户端因此出错，把它改成 false，网关会退化成只记字符数。"
+  },
+
+  "cache": {
+    "explicit": false,
+    "_说明": "显式缓存（无损优化）。false=纯透传，走上游隐式缓存（命中率不确定）。true=网关给 system 前缀打 cache_control 标记，走显式缓存：确定性命中、命中价=输入价10%、创建价=输入价125%。改这里不会影响基线跑法。注意：价格表里的 cache_read/cache_write 现在按【隐式缓存】价（20%/100%）填，若打开 explicit，要把它们改成显式价（10%/125%）。"
+  },
+
+  "retry": {
+    "max_attempts": 3,
+    "backoff_seconds": 0.8,
+    "_说明": "只在上游一个字节都还没返回之前重试。流已经开始吐内容了就不再重试 —— 否则客户端会收到两遍开头。"
+  },
+
+  "budget": {
+    "enabled": false,
+    "window": "total",
+    "cap_yuan": 50.0,
+    "preflight": false,
+    "_说明": "预算闸门（把「降本」从「每次更便宜」补全到「总量不失控」）。enabled=false=纯透传不拦。enabled=true 后：window=total 从日志第一行累计，window=daily 每天零点重置。cap_yuan=人民币上限，窗口内累计花费（按当前单价重算历史日志）达到它就拒（HTTP 402）。preflight=true 时还会在发请求前按「本次输入全价无缓存」的最坏情况预检，防一次超大上下文直接冲爆预算；false 则只靠硬上限（可能有少量超冲）。注意：拦截只对计费端点生效，count_tokens 之类不花钱的端点不受限。"
+  },
+
+  "models": {
+    "gw-qwen": {
+      "protocol": "openai",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "upstream_model": "qwen-plus",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "price_per_million": { "input": 0.8, "output": 2.0, "cache_read": 0.16, "cache_write": 0.8, "cache_read_explicit": 0.08, "cache_write_explicit": 1.0 },
+      "routing": {
+        "enabled": false,
+        "cheap_model": "gw-qwen-turbo",
+        "_说明": "模型路由（有损优化）。enabled=false 时纯透传 = 基线。打开后，router.guess_difficulty 判为 easy 的请求改用 cheap_model（qwen-turbo），medium/hard 仍走 qwen-plus。改这里不会影响基线跑法。"
+      }
+    },
+    "gw-qwen-turbo": {
+      "protocol": "openai",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "upstream_model": "qwen-turbo",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "price_per_million": { "input": 0.367, "output": 1.468, "cache_read": 0.0734, "cache_write": 0.367, "cache_read_explicit": 0.0367, "cache_write_explicit": 0.459 },
+      "_说明": "qwen-turbo 价格已核对（2026-09-24，两个独立来源交叉一致）：输入 0.367 / 输出 1.468 元每百万。缓存价：隐式=命中20%/创建100%，显式=命中10%/创建125%（官方文档）。"
+    },
+    "gw-doubao": {
+      "protocol": "openai",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "upstream_model": "doubao-seed-1-6-250615",
+      "api_key_env": "ARK_API_KEY",
+      "price_per_million": { "input": 0, "output": 0, "cache_read": 0, "cache_write": 0 }
+    },
+    "gw-hunyuan": {
+      "protocol": "openai",
+      "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+      "upstream_model": "hunyuan-turbos-latest",
+      "api_key_env": "HUNYUAN_API_KEY",
+      "price_per_million": { "input": 0, "output": 0, "cache_read": 0, "cache_write": 0 }
+    },
+    "gw-claude": {
+      "protocol": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "upstream_model": "claude-sonnet-4-6",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "price_per_million": { "input": 0, "output": 0, "cache_read": 0, "cache_write": 0 }
+    },
+    "claude-sonnet-4-5": {
+      "protocol": "openai",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "upstream_model": "qwen-plus",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "price_per_million": { "input": 0.8, "output": 2.0, "cache_read": 0.16, "cache_write": 0.8 }
+    },
+
+    "gw-mock-openai": {
+      "protocol": "openai",
+      "base_url": "http://127.0.0.1:8399",
+      "upstream_model": "mock-openai",
+      "api_key_env": "MOCK_API_KEY"
+    },
+    "gw-mock-anthropic": {
+      "protocol": "anthropic",
+      "base_url": "http://127.0.0.1:8399",
+      "upstream_model": "mock-anthropic",
+      "api_key_env": "MOCK_API_KEY"
+    }
+  }
+}

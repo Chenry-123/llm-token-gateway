@@ -1,0 +1,145 @@
+{
+  "model": "gw-qwen",
+  "routing": true,
+  "explicit_cache": false,
+  "note": "路由开（easy→qwen-turbo） + 隐式缓存",
+  "total_cost": 0.0471121162,
+  "avg_subjective_score": 3.36,
+  "avg_keypoint_coverage": 95.8,
+  "total_routed_turns": 22,
+  "total_cache_read_tokens": 27392,
+  "results": [
+    {
+      "id": "t01",
+      "difficulty": "easy",
+      "topic": "解释递归函数",
+      "cost": 0.0033352959999999997,
+      "avg_score": 3.33,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 0,
+      "routed_turns": 3
+    },
+    {
+      "id": "t02",
+      "difficulty": "medium",
+      "topic": "debug 列表越界",
+      "cost": 0.0024633774,
+      "avg_score": 3.67,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 3456,
+      "routed_turns": 3
+    },
+    {
+      "id": "t03",
+      "difficulty": "hard",
+      "topic": "设计接口缓存方案",
+      "cost": 0.00661504,
+      "avg_score": 4.0,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 1024,
+      "routed_turns": 0
+    },
+    {
+      "id": "t04",
+      "difficulty": "easy",
+      "topic": "解释一段 SQL",
+      "cost": 0.0038128638,
+      "avg_score": 3.33,
+      "covered": 3,
+      "total_points": 4,
+      "cache_read": 2176,
+      "routed_turns": 2
+    },
+    {
+      "id": "t05",
+      "difficulty": "easy",
+      "topic": "写判断素数的函数",
+      "cost": 0.0024357056,
+      "avg_score": 3.33,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 2304,
+      "routed_turns": 3
+    },
+    {
+      "id": "t06",
+      "difficulty": "easy",
+      "topic": "解释 HTTP 状态码",
+      "cost": 0.0029078144,
+      "avg_score": 2.67,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 3456,
+      "routed_turns": 3
+    },
+    {
+      "id": "t07",
+      "difficulty": "medium",
+      "topic": "优化低效代码",
+      "cost": 0.0053443200000000005,
+      "avg_score": 3.67,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 3072,
+      "routed_turns": 0
+    },
+    {
+      "id": "t08",
+      "difficulty": "medium",
+      "topic": "解释二分查找",
+      "cost": 0.0011317546,
+      "avg_score": 3.33,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 2304,
+      "routed_turns": 3
+    },
+    {
+      "id": "t09",
+      "difficulty": "medium",
+      "topic": "解释浅拷贝与深拷贝",
+      "cost": 0.0034974366,
+      "avg_score": 3.67,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 2304,
+      "routed_turns": 3
+    },
+    {
+      "id": "t10",
+      "difficulty": "hard",
+      "topic": "设计 LRU 缓存",
+      "cost": 0.0052400438,
+      "avg_score": 3.33,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 2176,
+      "routed_turns": 1
+    },
+    {
+      "id": "t11",
+      "difficulty": "hard",
+      "topic": "重构烂代码",
+      "cost": 0.00541872,
+      "avg_score": 2.67,
+      "covered": 3,
+      "total_points": 4,
+      "cache_read": 3072,
+      "routed_turns": 0
+    },
+    {
+      "id": "t12",
+      "difficulty": "hard",
+      "topic": "设计短链接服务",
+      "cost": 0.004909744000000001,
+      "avg_score": 3.33,
+      "covered": 4,
+      "total_points": 4,
+      "cache_read": 2048,
+      "routed_turns": 1
+    }
+  ]
+}
