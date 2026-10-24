@@ -166,7 +166,7 @@ async def main():
     await asyncio.sleep(0.2)
 
     parts = []
-    parts.append("路由开（easy→qwen-turbo）" if ROUTING else "纯透传")
+    parts.append("路由开（easy→qwen-flash）" if ROUTING else "纯透传")
     parts.append("显式缓存" if CACHE else "隐式缓存")
     mode_label = " + ".join(parts)
     print()

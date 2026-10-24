@@ -7,7 +7,7 @@
     这个脚本一次只回答①，而且顺带验证②依赖的那件事（流式里能不能拿到用量）。
     selftest.py 用的是假上游，这里用真上游 —— 两者都对上，接 Qoder 时就只剩 Qoder 一个未知数。
 
-它会真的消耗额度：两次调用合计约 30-60 token，qwen-plus 下不到 1 分钱。
+它会真的消耗额度：两次调用合计约 30-60 token，qwen-plus-latest 下不到 1 分钱。
 
 用法（在 gateway 目录下）：
     .venv\\Scripts\\python.exe probe_key.py
@@ -22,7 +22,7 @@ import httpx
 
 ENV_NAME = "DASHSCOPE_API_KEY"
 BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-MODEL = "qwen-plus"
+MODEL = "qwen-plus-latest"
 
 
 def hr(title):

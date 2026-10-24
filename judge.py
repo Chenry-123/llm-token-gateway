@@ -10,7 +10,7 @@ judge.py —— 打分器：LLM 裁判 + 客观要点覆盖
 回答看着通顺、裁判可能打高分，但漏了要点。光有主观分测不出这种损失。
 
 裁判模型第一版用 qwen-plus 自己 —— 「自己评自己」的偏见是已知限制，
-后续换更强模型（qwen-max）或双裁判取均值。
+现已改用 qwen-long（独立免费额度 + 与被评模型不同源，顺带减少自评偏见）。
 
 裁判调用直接走百炼、不经过网关：裁判是评测工具，它的调用成本不该混进
 「被评测对象」的成本里。
@@ -28,7 +28,9 @@ if not os.environ.get("DASHSCOPE_API_KEY"):
 import httpx
 
 BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-JUDGE_MODEL = "qwen-plus"
+# 2026-10-24：qwen-plus 免费额度耗尽，裁判改用 qwen-long（有独立免费额度、价格便宜）。
+# 裁判和「被评测的好模型」不同源，还顺带减少了「自己评自己」的偏见。
+JUDGE_MODEL = "qwen-long"
 
 _PROMPT = """你是评测裁判。下面给出「用户问题」「参考答案要点」「模型回答」。请评估模型回答的质量。
 

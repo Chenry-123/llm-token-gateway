@@ -394,7 +394,7 @@ def _test_convert_image():
     PNG = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "aGVsbG8="}}
 
     def _conv(body):
-        return convert.anthropic_request_to_openai(body, "qwen-plus")
+        return convert.anthropic_request_to_openai(body, "qwen-plus-latest")
 
     # 1) 文本 + 图片 → parts 数组（text 在前、image_url 在后），data URL 拼对
     out = _conv({"model": "claude-sonnet-4-5", "max_tokens": 100,
@@ -473,7 +473,7 @@ async def main():
                   "HTTP %s，列出 %d 个模型名" % (m.status_code, len(ids)))
             leaked_txt = json.dumps(m.json(), ensure_ascii=False) if m.status_code == 200 else ""
             check("模型列表只暴露对外名（不泄露上游真名/host/env 变量名）",
-                  "qwen-plus" not in leaked_txt and "dashscope" not in leaked_txt
+                  "qwen-plus-latest" not in leaked_txt and "dashscope" not in leaked_txt
                   and "api_key_env" not in leaked_txt, "")
             m2 = await c.get(base + "/v1/models", headers={"authorization": "Bearer wrong-key"})
             check("模型列表同样校验网关密钥 → 401", m2.status_code == 401,

@@ -15,6 +15,7 @@ upstream.py —— 跟上游厂商说话的那一层
 """
 
 import asyncio
+import json
 
 import httpx
 
@@ -53,6 +54,26 @@ def classify_status(status):
     if 500 <= status < 600:
         return "upstream_server"
     return "http_error"
+
+
+def classify_error(status, body_bytes=b""):
+    """按状态码分类，再读响应体里的错误 code 细分。
+
+    为什么 403 不能一刀切归成 auth：
+        403 至少有三种原因 —— key 无效/无权限（auth）、免费额度耗尽
+        （百炼返回 code=AllocationQuota.FreeTierOnly）、触发风控。
+        不读响应体，日志里「额度耗尽」会被误报成「认证失败」，
+        排查时方向就错了（去换 key，而不是去充值/换模型）。
+    """
+    kind = classify_status(status)
+    if status == 403 and body_bytes:
+        try:
+            code = (json.loads(body_bytes).get("error") or {}).get("code") or ""
+            if "quota" in code.lower():
+                kind = "quota"
+        except Exception:                    # noqa: BLE001
+            pass
+    return kind
 
 
 def classify_exception(exc):

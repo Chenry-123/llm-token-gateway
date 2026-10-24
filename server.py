@@ -34,7 +34,7 @@ import protocols
 import router
 import usage_log
 from protocols import PROTOCOL_AUTH, ROUTES, SSEDecoder, STREAM_USAGE
-from upstream import UpstreamError, build_headers, build_url, classify_status, open_upstream
+from upstream import UpstreamError, build_headers, build_url, classify_error, open_upstream
 
 # ---------------------------------------------------------------
 # 配置
@@ -300,7 +300,7 @@ async def _handle(request, route):
         "virtual_model": virtual_model,
         "upstream_model": upstream_model,
         # 路由相关：billed_model 是「成本按谁的单价算」。路由把 easy 请求换成了
-        # 便宜模型后，virtual_model 仍是客户端要的 gw-qwen，但钱得按 turbo 算。
+        # 便宜模型后，virtual_model 仍是客户端要的 gw-qwen，但钱得按 flash 算。
         # 没路由时 billed_model == virtual_model，行为与旧版完全一致。
         "billed_model": billed_model or virtual_model,
         "routed": routed,
@@ -343,7 +343,7 @@ async def _handle(request, route):
     if resp.status_code >= 400:
         raw_resp = await resp.aread()
         await resp.aclose()
-        kind = classify_status(resp.status_code)
+        kind = classify_error(resp.status_code, raw_resp)
         usage_log.append(CONFIG, dict(
             base_record, ok=False, status=resp.status_code, retry_count=retries,
             latency_ms=_ms(), error_kind=kind,

@@ -3,7 +3,7 @@
 analyze_router.py —— 路由质量损失的统计收尾
 
 用现有 4 份评测数据，回答一个尖锐的问题：
-「路由（easy 题换成 qwen-turbo）到底有没有显著降低质量？」
+「路由（easy 题换成 qwen-flash）到底有没有显著降低质量？」
 
 背景（为什么需要这个脚本）：
   同一套路由，短 system 测出「掉 10.5% 质量」，长 system 测出「涨 7%」——方向反了。
@@ -13,13 +13,13 @@ analyze_router.py —— 路由质量损失的统计收尾
   1. 重测噪声：baseline vs cache 是「同输入」两次独立跑（缓存无损，模型看到的东西
      完全一样），它们的逐题分数差 = 纯重测噪声（模型采样 + judge 采样）。
   2. 路由差：baseline vs routing 逐题分数差，按「该题被路由几轮」分成三组：
-       - 未路由（routed_turns=0，两边都是 qwen-plus）→ 差 = 纯重测噪声（对照组）
-       - 纯路由（routed_turns=3，整题都是 qwen-turbo）→ 差 = 噪声 + 真实路由效应
+       - 未路由（routed_turns=0，两边都是 qwen-plus-latest）→ 差 = 纯重测噪声（对照组）
+       - 纯路由（routed_turns=3，整题都是 qwen-flash）→ 差 = 噪声 + 真实路由效应
        - 部分路由（0<routed_turns<3）→ 混合，稀释了效应，单独列示
   3. 配对检验：对「纯路由题」的路由差做 Wilcoxon 符号秩检验（精确 p 值，枚举 2^n
      符号组合，小样本不依赖正态假设），判断是否显著偏离 0。
 
-结论会直接告诉我们：turbo 的「质量损失」在当前规模下能不能和噪声区分开。
+结论会直接告诉我们：flash 的「质量损失」在当前规模下能不能和噪声区分开。
 """
 import json
 import math
@@ -88,8 +88,8 @@ def wilcoxon_signed_rank(diffs):
 
 
 def main():
-    base = load("eval_baseline.json")    # 隐式缓存, 不路由（qwen-plus）
-    cache = load("eval_cache.json")      # 显式缓存, 不路由（qwen-plus）
+    base = load("eval_baseline.json")    # 隐式缓存, 不路由（qwen-plus-latest）
+    cache = load("eval_cache.json")      # 显式缓存, 不路由（qwen-plus-latest）
     route = load("eval_routing.json")    # 隐式缓存, 路由
     stack = load("eval_stack.json")      # 显式缓存, 路由
 
@@ -130,16 +130,16 @@ def main():
     pure = [sr[i] - sb[i] for i in ids if routed[i] == 3]
     part = [sr[i] - sb[i] for i in ids if 0 < routed[i] < 3]
 
-    print("\n    未路由题（对照组，两边都 plus）: n=%d 均值 %+.3f 标准差 %.3f"
+    print("\n    未路由题（对照组，两边都 plus-latest）: n=%d 均值 %+.3f 标准差 %.3f"
           % (len(unr), mean(unr), std(unr)))
-    print("    纯路由题（plus vs turbo）    : n=%d 均值 %+.3f 标准差 %.3f"
+    print("    纯路由题（plus-latest vs flash）    : n=%d 均值 %+.3f 标准差 %.3f"
           % (len(pure), mean(pure), std(pure)))
     print("    部分路由题（混合，稀释）       : n=%d 均值 %+.3f"
           % (len(part), mean(part)))
 
     # ---- 3. 配对检验 ----
     print("\n[3] 配对 Wilcoxon 符号秩检验（双侧精确 p 值）")
-    for label, diffs in [("纯路由题 plus vs turbo", pure),
+    for label, diffs in [("纯路由题 plus-latest vs flash", pure),
                          ("未路由题（应≈0，做方法校验）", unr)]:
         Wp, Wm, n, p = wilcoxon_signed_rank(diffs)
         if n == 0:
@@ -152,12 +152,14 @@ def main():
     print("=" * 72)
     se_routing = std(pure) / math.sqrt(len(pure)) if pure else 0
     d_bar = mean(pure)
-    print("纯路由题（plus→turbo）质量差均值 %+.3f，标准误 %.3f" % (d_bar, se_routing))
+    print("纯路由题（plus-latest→flash）质量差均值 %+.3f，标准误 %.3f" % (d_bar, se_routing))
     print("重测噪声（同输入）标准差 %.3f —— 和路由差同量级，说明信号被噪声淹没。"
           % std(noise))
     print("=> 在当前 %d 题规模下，路由的质量损失「测不显著」（方向甚至为正）。" % len(ids))
-    print("   省钱结论（缓存 15% / 路由 20~29% / 叠加 32%）可信，因为从日志读、")
+    print("   省钱结论（路由 -51.2% / 叠加 -55.0%）可信，因为从日志读、")
     print("   不依赖裁判；质量结论需要更大样本才能和噪声分离。")
+    print("   注意：缓存对 plus-latest 无效（该模型不支持缓存），cache 配置≈基线；")
+    print("   缓存只在 flash 上生效（stack 比 routing 多省约 3.8 个百分点）。")
 
 
 if __name__ == "__main__":

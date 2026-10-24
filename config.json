@@ -7,7 +7,7 @@
     "  base_url     上游根地址。网关会拼上协议该有的子路径。",
     "  api_key_env  上游 key 存在哪个**环境变量**里。",
     "               ！这里只写变量名，不写 key 本身 —— 因为这份文件要开源上 GitHub。",
-    "  price_per_million  每百万 token 的单价（元）。qwen-plus 已核对（2026-09-22，华北2北京）：输入 0.8、输出 2.0（非思考模式；思考模式输出是 8 元，开了 enable_thinking 要改这里）。缓存价按百炼【隐式缓存】规则（2026-09-24 核实官方文档）：命中=输入价 20%、创建=输入价 100%（无溢价）。注意：显式缓存（主动传 cache_control）才是命中 10%、创建 125%，我们目前用的是隐式缓存，别混。隐式缓存最小可缓存长度 1024 token。价格会变，改这里即可重算历史。",
+    "  price_per_million  每百万 token 的单价（元）。当前「好模型」是 qwen-plus-latest（2026-10-24 因 qwen-plus 免费额度耗尽改用，同系列同价）：输入 0.8、输出 2.0（华北2北京）。缓存价按百炼【隐式缓存】规则：命中=输入价 20%、创建=输入价 100%（无溢价）。注意：显式缓存（主动传 cache_control）才是命中 10%、创建 125%，我们目前用的是隐式缓存，别混。隐式缓存最小可缓存长度 1024 token。价格会变，改这里即可重算历史。",
     "gw-mock-*      自验用的假上游，由 selftest.py 启动。没有真实 key 也能跑通全链路。"
   ],
 
@@ -45,22 +45,23 @@
     "gw-qwen": {
       "protocol": "openai",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "upstream_model": "qwen-plus",
+      "upstream_model": "qwen-plus-latest",
       "api_key_env": "DASHSCOPE_API_KEY",
       "price_per_million": { "input": 0.8, "output": 2.0, "cache_read": 0.16, "cache_write": 0.8, "cache_read_explicit": 0.08, "cache_write_explicit": 1.0 },
+      "_说明": "2026-10-24 因 qwen-plus 免费额度耗尽（AllocationQuota.FreeTierOnly），改用 qwen-plus-latest（同系列、同价 0.8/2.0、独立免费额度）。缓存价：隐式=命中20%/创建100%，显式=命中10%/创建125%。",
       "routing": {
         "enabled": false,
-        "cheap_model": "gw-qwen-turbo",
-        "_说明": "模型路由（有损优化）。enabled=false 时纯透传 = 基线。打开后，router.guess_difficulty 判为 easy 的请求改用 cheap_model（qwen-turbo），medium/hard 仍走 qwen-plus。改这里不会影响基线跑法。"
+        "cheap_model": "gw-qwen-flash",
+        "_说明": "模型路由（有损优化）。enabled=false 时纯透传 = 基线。打开后，router.guess_difficulty 判为 easy 的请求改用 cheap_model（qwen-flash），medium/hard 仍走 qwen-plus-latest。改这里不会影响基线跑法。"
       }
     },
-    "gw-qwen-turbo": {
+    "gw-qwen-flash": {
       "protocol": "openai",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "upstream_model": "qwen-turbo",
+      "upstream_model": "qwen-flash",
       "api_key_env": "DASHSCOPE_API_KEY",
-      "price_per_million": { "input": 0.367, "output": 1.468, "cache_read": 0.0734, "cache_write": 0.367, "cache_read_explicit": 0.0367, "cache_write_explicit": 0.459 },
-      "_说明": "qwen-turbo 价格已核对（2026-09-24，两个独立来源交叉一致）：输入 0.367 / 输出 1.468 元每百万。缓存价：隐式=命中20%/创建100%，显式=命中10%/创建125%（官方文档）。"
+      "price_per_million": { "input": 0.15, "output": 1.5, "cache_read": 0.03, "cache_write": 0.15, "cache_read_explicit": 0.015, "cache_write_explicit": 0.1875 },
+      "_说明": "2026-10-24 因 qwen-turbo 触发限流（429），改用 qwen-flash 当「便宜模型」（更便宜：输入 0.15 / 输出 1.5 元每百万）。缓存价：隐式=命中20%/创建100%，显式=命中10%/创建125%。"
     },
     "gw-doubao": {
       "protocol": "openai",
@@ -86,7 +87,7 @@
     "claude-sonnet-4-5": {
       "protocol": "openai",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "upstream_model": "qwen-plus",
+      "upstream_model": "qwen-plus-latest",
       "api_key_env": "DASHSCOPE_API_KEY",
       "price_per_million": { "input": 0.8, "output": 2.0, "cache_read": 0.16, "cache_write": 0.8 }
     },
