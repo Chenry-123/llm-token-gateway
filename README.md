@@ -1,5 +1,11 @@
 # token 网关 · 本地 LLM 省钱网关
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![Protocol](https://img.shields.io/badge/Protocol-OpenAI%20%7C%20Anthropic-orange)](#能力清单)
+
+> 📖 **English**: see [README.en.md](README.en.md)
+
 一个跑在**你自己机器上**的本地网关，夹在 **AI 编程客户端**（Qoder / Claude Code）和**模型厂商**之间。
 它不只是一个「转发 + 记账」的管道，而是一个**决策层**：用「缓存 + 路由 + 预算闸门」三招省钱，
 并且每一分钱都记在日志里、可对账、可证明。
@@ -56,17 +62,17 @@
 
 请求走一条固定的流水线，每一层只干一件事：
 
-```
-客户端 ──▶ 网关(server.py)
-             │  ① 鉴权 + 找映射（虚拟名 → 真实上游）
-             │  ② 路由决策（router.py：easy 换便宜模型）
-             │  ③ 协议转换（convert.py：客户端/上游协议不一致时）
-             │  ④ 显式缓存注入（protocols.py：给 system 打 cache_control）
-             │  ⑤ 预算闸门（budget.py：超预算就在转发前拒）
-             │  ⑥ 转发上游（upstream.py：换地址换 key、保留流、失败重试）
-             │  ⑦ 记账（pricing.py：四段计费 → usage_log.py 落盘）
-             ▼
-         上游厂商（百炼 / 火山 / 混元 / Anthropic …）
+```mermaid
+flowchart TB
+    A["客户端（Qoder / Claude Code）"] --> B["网关 server.py"]
+    B --> C["① 鉴权 + 找映射<br/>虚拟名 → 真实上游"]
+    C --> D["② 路由决策<br/>easy 换便宜模型（router.py）"]
+    D --> E["③ 协议转换<br/>anthropic → openai（convert.py）"]
+    E --> F["④ 显式缓存注入<br/>给 system 打 cache_control（protocols.py）"]
+    F --> G["⑤ 预算闸门<br/>超预算转发前拒（budget.py）"]
+    G --> H["⑥ 转发上游<br/>换地址/换 key/保留流/重试（upstream.py）"]
+    H --> I["⑦ 记账<br/>四段计费 → jsonl（pricing.py / usage_log.py）"]
+    H --> J["上游厂商<br/>百炼 / 火山 / 混元 / Anthropic"]
 ```
 
 核心设计哲学只有一条：**把会变的抽成数据（`config.json` + `protocols.py` 的表），把不变的写成逻辑。** 加一家厂商 = 在 `config.json` 加一条映射；加一种协议 = 在表里加一行，主流程零改动。
