@@ -298,6 +298,7 @@ gateway/
   run_gateway.py        常驻启动（从注册表读 key）
   run.bat               双击启动；run.bat test 跑自验
   selftest.py           自验：假上游 + 真网关 + 对账（无需 key）
+  e2e_long_run.py       真实百炼多轮 agent loop 长跑（anthropic→openai 转换 + 工具调用往返）
   mcp_server.py         MCP 壳：查成本/预算/用量的三个查询工具（fastmcp）
   mcp_smoke.py          MCP 壳冒烟测试：直接调用 + stdio 端到端拉起
   dashboard.py          成本看板：读日志生成自包含 dashboard.html
@@ -317,6 +318,6 @@ gateway/
 
 ## 下一步（按价值排序）
 
-1. **接 Claude Code 真实跑一段**：验证 anthropic→openai 转换在真实长对话 + 工具调用下的稳定性（已做过一次端到端冒烟，但还没连续长跑）。
+1. **接 Claude Code 真实跑一段**：验证 anthropic→openai 转换在真实长对话 + 工具调用下的稳定性（已完成多轮 agent loop 长跑验证 `e2e_long_run.py`：真实百炼上工具调用往返 + 最终收敛正常；若想 100% 真实，可自己开 Claude Code 挂上再压一段）。
 2. **反向协议转换（openai→anthropic）**：如果有「OpenAI 客户端 + Claude 上游」的场景再补。
 3. **云部署 / GitHub 发布**：作为求职项目，最后补一个可公开展示的落地形态（成本看板 `dashboard.html`、复盘文 `WRITEUP.md` 已完成）。
