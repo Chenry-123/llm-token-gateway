@@ -27,7 +27,6 @@ EXPECTED = ["budget_status", "cost_summary", "recent_usage"]
 
 def test_import_and_tools():
     """直接 import：三个工具都注册了，且能被调用、返回中文摘要。"""
-    assert sorted(m.cost_summary and []) == [] or True  # 占位，保持结构
     print("直接调用 cost_summary()：")
     out = m.cost_summary()
     assert "总成本" in out, out
