@@ -152,6 +152,27 @@ ANTHROPIC_MODEL=claude-sonnet-4-5   # 这是 config.json 里的映射名，上�
 
 **验收标准**：随便问一句话正常回答，同时 `logs/usage.jsonl` 多出一行，token 数和厂商控制台对得上。
 
+### 第 5 步 · Docker 部署（可选）
+
+不想装 Python 环境、或要在服务器上跑时，一条命令起网关（机器上装 Docker Desktop 即可）：
+
+```bash
+# 方式一：docker compose（推荐，key 从环境变量或 .env 读）
+docker compose up -d
+
+# 方式二：手动构建 + 运行
+docker build -t llm-token-gateway .
+docker run -d -p 8317:8317 -e DASHSCOPE_API_KEY=你的key --name gateway llm-token-gateway
+```
+
+起来后客户端填法和上面第 4 步一样（Base URL `http://127.0.0.1:8317/v1`）。
+
+几个要点：
+
+- **key 必须用 `-e` 传进容器**——容器里没有 Windows 注册表，读不到你本机的 key。用 compose 就建一个 `.env` 文件写 `DASHSCOPE_API_KEY=xxx`（已在 `.gitignore` 里，不会进 git）。
+- 容器监听 `0.0.0.0:8317` 再映射到宿主机 8317；日志挂在 `./logs` 卷上，宿主机能直接看账本。
+- 换厂商就多传一个变量（`ARK_API_KEY` / `ANTHROPIC_API_KEY` / `HUNYUAN_API_KEY`）。
+
 ---
 
 ## 省钱机制
@@ -303,6 +324,9 @@ gateway/
   config.json           映射表 + 价格 + 缓存/路由开关。只写变量名，不写 key
   run_gateway.py        常驻启动（从注册表读 key）
   run.bat               双击启动；run.bat test 跑自验
+  requirements.txt      依赖清单（fastapi/uvicorn/httpx，已锁版本）
+  Dockerfile            容器化构建（Linux，环境变量传 key）
+  docker-compose.yml    一键启动（key 从 .env 读，日志挂卷）
   selftest.py           自验：假上游 + 真网关 + 对账（无需 key）
   e2e_long_run.py       真实百炼多轮 agent loop 长跑（anthropic→openai 转换 + 工具调用往返）
   mcp_server.py         MCP 壳：查成本/预算/用量的三个查询工具（fastmcp）

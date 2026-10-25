@@ -1,0 +1,16 @@
+# 构建镜像时排除本机开发产物，只把运行时需要的东西送进 build context
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+logs/
+_scrap/
+*.md
+*.bat
+dashboard.html
+eval_*.json
+evalset.json
+_*.log
+_*.txt
+.env

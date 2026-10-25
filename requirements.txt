@@ -1,0 +1,4 @@
+fastapi==0.141.1
+uvicorn==0.53.0
+httpx==0.28.1
+# fastmcp==4.1.3  # 仅 MCP 壳（mcp_server.py）需要，网关主进程不用；Docker 场景不带，本机跑用 run.bat 已装

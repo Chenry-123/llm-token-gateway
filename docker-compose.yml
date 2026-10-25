@@ -1,0 +1,14 @@
+# 一键启动：docker compose up -d
+# key 通过环境变量传入：优先读宿主机的 DASHSCOPE_API_KEY，或在本目录建 .env 写 DASHSCOPE_API_KEY=xxx
+# （.env 已在 .gitignore 里，不会进 git）
+services:
+  gateway:
+    build: .
+    container_name: llm-token-gateway
+    ports:
+      - "8317:8317"
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
