@@ -54,7 +54,7 @@
 | ✅ 容忍「绝对形式」请求行 | 本机代理没绕过 `127.0.0.1` 时的兜底 |
 | ✅ **MCP 壳** | 把「查成本 / 查预算 / 查用量」暴露成 MCP 工具，Claude Code 等客户端主动查询（`mcp_server.py`，基于 fastmcp） |
 | ✅ **成本看板** | 一键生成自包含 HTML（`run.bat dashboard` → `dashboard.html`），总成本 / 按模型 / 按天趋势 / 缓存节省，双击即看、零依赖 |
-| ❌ 反向协议转换 / 部署 | 未做 |
+| ❌ 反向协议转换（openai → anthropic） | 未做（有「OpenAI 客户端 + Claude 上游」场景再补） |
 
 ---
 
@@ -348,6 +348,6 @@ gateway/
 
 ## 下一步（按价值排序）
 
-1. **接 Claude Code 真实跑一段**：验证 anthropic→openai 转换在真实长对话 + 工具调用下的稳定性（已完成多轮 agent loop 长跑验证 `e2e_long_run.py`：真实百炼上工具调用往返 + 最终收敛正常；若想 100% 真实，可自己开 Claude Code 挂上再压一段）。
+1. **云部署**：Docker 化已就绪（`Dockerfile` + `docker-compose.yml`），下一步把容器跑到云服务器上，配域名 + HTTPS，做成 24 小时在线、别人能直接访问的演示环境。
 2. **反向协议转换（openai→anthropic）**：如果有「OpenAI 客户端 + Claude 上游」的场景再补。
-3. **云部署 / GitHub 发布**：作为求职项目，最后补一个可公开展示的落地形态（成本看板 `dashboard.html`、复盘文 `WRITEUP.md` 已完成）。
+3. **扩大评测集 + 换更强裁判**：当前质量结论是「软」的（35 题、LLM-judge 主观分），要更硬需要扩大样本量、引入更客观的评测手段。

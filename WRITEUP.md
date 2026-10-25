@@ -178,7 +178,7 @@ uncached_input = input_tokens - cache_read_tokens - cache_write_tokens
 ## 8. 如果继续做
 
 1. **反向协议转换（openai → anthropic）**：有「OpenAI 客户端 + Claude 上游」场景再补。
-2. **云部署**：现在跑在本机，多客户端/团队场景需要常驻服务。
+2. **云部署**：Docker 化已就绪（`Dockerfile` + `docker-compose.yml`），下一步把容器跑到云服务器上，多客户端/团队场景用常驻服务。
 3. **更聪明的路由**：现在是规则猜难度，可以换成「小模型打分 + 路由」，但会更难证明「没掉质量」。
 
 ---
@@ -203,4 +203,7 @@ gateway/
   analyze_router.py 统计收尾：重测噪声 + 配对检验
   mcp_server.py     MCP 壳：查账工具
   dashboard.py      成本看板：生成自包含 HTML
+  requirements.txt  依赖清单（已锁版本）
+  Dockerfile        容器化构建
+  docker-compose.yml 一键容器部署
 ```
