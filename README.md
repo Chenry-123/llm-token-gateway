@@ -5,6 +5,7 @@
 [![Protocol](https://img.shields.io/badge/Protocol-OpenAI%20%7C%20Anthropic-orange)](#能力清单)
 
 > 📖 **English**: see [README.en.md](README.en.md)
+> 📝 **项目复盘文章**: [ARTICLE.md](ARTICLE.md)
 
 一个跑在**你自己机器上**的本地网关，夹在 **AI 编程客户端**（Qoder / Claude Code）和**模型厂商**之间。
 它不只是一个「转发 + 记账」的管道，而是一个**决策层**：用「缓存 + 路由 + 预算闸门」三招省钱，
@@ -339,6 +340,7 @@ gateway/
   analyze_router.py     统计收尾：重测噪声 + 配对检验
   eval_*.json           四份评测结果（基线/缓存/路由/叠加）
   WRITEUP.md            项目复盘（给面试官看的完整复盘，8 章）
+  ARTICLE.md            项目复盘文章（面向读者的传播版）
 ```
 
 **要改代码**：PowerShell 里 `cd` 到 `gateway`，敲 `code .`（`code` 就是 Qoder IDE）。
