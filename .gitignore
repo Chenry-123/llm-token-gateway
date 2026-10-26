@@ -2,6 +2,7 @@
 logs/
 __pycache__/
 *.pyc
+.pytest_cache/
 .env
 
 # 临时输出（探针、环境检查等），不要提交
