@@ -17,6 +17,8 @@ protocols.py —— 协议差异表（这个项目的地基之一）
     和项目里 llm.py 那一层是同一个道理 —— 你在架构说明书里见过。
 """
 
+import token_estimate
+
 # ---------------------------------------------------------------
 # 表 1 · 路由表
 #   进来的路径 → 它属于哪个协议、往上游该拼什么路径、要不要记用量
@@ -327,6 +329,17 @@ def _count_chars(obj):
     return 0
 
 
+def _count_tokens(obj):
+    """同 _count_chars，但用 token_estimate 的加权口径，估算 token 数而非字符数。"""
+    if isinstance(obj, str):
+        return token_estimate.estimate_tokens(obj)
+    if isinstance(obj, list):
+        return sum(_count_tokens(x) for x in obj)
+    if isinstance(obj, dict):
+        return sum(_count_tokens(v) for k, v in obj.items() if k not in _SKIP_KEYS)
+    return 0
+
+
 def _has_image(obj):
     if isinstance(obj, dict):
         if obj.get("type") in ("image", "image_url"):
@@ -343,6 +356,8 @@ def request_stats(protocol, body):
         "msg_count": 0,
         "prompt_chars": 0,
         "system_chars": 0,
+        "prompt_tokens_est": 0,
+        "system_tokens_est": 0,
         "tool_count": 0,
         "declared_tools": 0,
         "has_image": False,
@@ -356,12 +371,15 @@ def request_stats(protocol, body):
         if isinstance(m, dict):
             # 正文
             stats["prompt_chars"] += _count_chars(m.get("content"))
+            stats["prompt_tokens_est"] += _count_tokens(m.get("content"))
             # 工具调用（函数名 + 参数）也占 token，别漏
             stats["prompt_chars"] += _count_chars(m.get("tool_calls"))
+            stats["prompt_tokens_est"] += _count_tokens(m.get("tool_calls"))
 
     system = body.get("system")          # anthropic 的写法
     if system is not None:
         stats["system_chars"] = _count_chars(system)
+        stats["system_tokens_est"] = _count_tokens(system)
 
     tools = body.get("tools") or []
     stats["tool_count"] = len(tools)

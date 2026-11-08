@@ -50,6 +50,7 @@
 | ✅ **模型路由** | easy 题自动换成便宜模型（qwen-flash），medium/hard 仍走 qwen-plus-latest |
 | ✅ **预算闸门** | 按日志累计成本，超预算就在转发前拒（402），把「省钱」升级成「控钱」 |
 | ✅ **单次 token 上限** | 输入预检（超了转发前拒）+ 输出钳制（收紧 max_tokens），管「单次请求」的 token 数 | 
+| ✅ **任务累计上限** | 手动任务：按 key 累计 input+output，超了转发前拒；`POST /v1/task/reset` 手动开新任务 |
 | ✅ 失败分类与退避重试 | 只在上游还没吐第一个字节之前重试 |
 | ✅ 只记统计量，不记内容 | 日志可以安全公开 |
 | ✅ `GET /v1/models`、`count_tokens` | 客户端「添加模型」和 Claude Code 启动都要调 |
@@ -73,8 +74,9 @@ flowchart TB
     E --> F["④ 显式缓存注入<br/>给 system 打 cache_control（protocols.py）"]
     F --> G["⑤ 预算闸门<br/>超预算转发前拒（budget.py）"]
     G --> G2["⑥ 单次 token 上限<br/>输入预检 + 输出钳制（token_limit.py）"]
-    G2 --> H["⑦ 转发上游<br/>换地址/换 key/保留流/重试（upstream.py）"]
-    H --> I["⑧ 记账<br/>四段计费 → jsonl（pricing.py / usage_log.py）"]
+    G2 --> G3["⑦ 任务累计上限<br/>手动任务，转发前预检 + 转发后累加（task_limit.py）"]
+    G3 --> H["⑧ 转发上游<br/>换地址/换 key/保留流/重试（upstream.py）"]
+    H --> I["⑨ 记账<br/>四段计费 → jsonl（pricing.py / usage_log.py）"]
     H --> J["上游厂商<br/>百炼 / 火山 / 混元 / Anthropic"]
 ```
 
@@ -223,12 +225,28 @@ config.json 里 `routing.enabled` 控制（默认 false = 纯透传）。**只�
 
 预算闸门管「累计花了多少钱」，但它不拦「单次请求喂了多大的上下文 / 让模型吐了多少」。这个模块管**单次请求的 token 数**，两件事：
 
-- **输入预检**：转发前按「字符数 // 4」估算本次输入 token，超了直接拒（HTTP 402），防一次喂一个超大上下文。估算是英文口径、中文会偏低，所以是**粗略上限**不是精确计数——刻意不引入 tiktoken 这类分词依赖，保持零重依赖、可离线自验。
+- **输入预检**：转发前按「语言感知加权」估算本次输入 token（中文 ≈ 1 token/字、英文 ≈ 4 字符/1 token），超了直接拒（HTTP 402），防一次喂一个超大上下文。这是零依赖的本地估算，仍是**粗略上限**不是精确计数（精确值以转发后上游 usage 为准），但把老「字符数//4」中文会低估 4 倍的缺陷修掉了。
 - **输出钳制**：给请求体收紧 `max_tokens`（只收紧、不放宽，客户端自己设了更小的就不动它），防模型一次吐太多。
 
 `config.json` 的 `token_limit` 段控制：`enabled`（默认 false）、`max_input_tokens`（0=不限）、`max_output_tokens`（0=不限）。拦下时返回 `x-gateway-token-limit: exceeded` 头 + 错误类型 `gateway_token_limit_exceeded`，和预算拦截一样能一眼认出来源。
 
-> 注：这管的是「**单次**请求」。如果你要的是「一个**任务**（多轮对话）累计不超过多少 token」，那是另一件事——需要网关认得「哪些请求属于同一个任务」（session id），要从无状态变有状态，复杂度高得多，目前未做。
+> 注：这管的是「**单次**请求」。「一个任务（多轮对话）累计不超过多少 token」由下面的「任务级累计上限」负责。
+
+### 任务级累计上限（控任务）
+
+单次上限管「一条消息」，但一个任务往往是几十条消息。任务级上限管「一个任务从头到尾累计用了多少 token」：
+
+- **任务边界由你手动划**：网关按「客户端 key」累计，你开始新任务前调一次 `POST /v1/task/reset` 清零，到下个 reset 之间就是一个任务。
+- **累计口径**（input + output 全算，含缓存命中）：转发前拦「已累计 + 本次输入加权估算」超限（HTTP 402 + `x-gateway-task-limit` 头）；转发后拿上游 usage 真值累进。
+- **状态持久化**到 `logs/task_state.json`，网关重启不丢。
+- 一个诚实的边界：输出 token 转发前无法可靠预知（`max_tokens` 可能没设），所以输出侧靠「单次上限的输出钳制」兜底 + 转发后真值累加——**最后一次请求可能有少量超冲**，到下一次请求才会被拦。
+
+`config.json` 的 `task_limit` 段控制：`enabled`（默认 false）、`max_tokens`（一个任务的累计上限，0=不限）。
+
+**怎么用**：
+
+- 开始新任务前清零：`run.bat reset`（或 `python reset_task.py`），它会自动读 config 里的地址和 key，不用你记端口。
+- 定 `max_tokens` 数值：先跑 `run.bat analyze`（`analyze_tasks.py`），它会从日志算出「任务 token 分位数」和「上限 → 完成率」对照表，你照着 P90~P95 附近选一个值，不用拍脑袋。
 
 ### MCP 壳（查账，不转发）
 
@@ -293,14 +311,14 @@ MCP 壳是给**客户端**查账的（机器读）；看板是给**人**看的�
 
 ### 单元测试
 
-核心逻辑（四段计费 / 路由 / 预算闸门 / 单次 token 上限）有 pytest 单元测试锁边界，在 `tests/` 目录：
+核心逻辑（四段计费 / 路由 / 预算闸门 / 单次 token 上限 / 任务累计上限 / token 估算）有 pytest 单元测试锁边界，在 `tests/` 目录：
 
 ```bash
 pip install pytest   # 一次性
 pytest tests/ -v
 ```
 
-44 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检（拦截/放行/边界相等）与输出钳制（收紧/不放宽/不钳制）等。
+62 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离）等。
 
 ---
 
@@ -344,12 +362,14 @@ gateway/
   pricing.py            四段计费（按 billed_model，减缓存重复计费）
   budget.py             预算闸门（按日志累计成本，超预算转发前拒）
   token_limit.py        单次 token 上限（输入预检 + 输出钳制）
+  task_limit.py         任务级累计上限（手动任务，按 key 累计 + reset）
+  token_estimate.py     本地加权估算 token（中文 1 token/字、英文 4 字符/1 token）
   router.py             模型路由（猜难度 + 同厂商降档守卫）
   upstream.py           跟上游说话：换地址换key、保留流、失败重试
   usage_log.py          记账：只记事实 + 统计量，jsonl 追加写
   config.json           映射表 + 价格 + 缓存/路由开关。只写变量名，不写 key
   run_gateway.py        常驻启动（从注册表读 key）
-  run.bat               双击启动；run.bat test 跑自验
+  run.bat               双击启动；run.bat test 自验 / dashboard 看板 / reset 重置任务 / analyze 分析上限
   requirements.txt      依赖清单（fastapi/uvicorn/httpx，已锁版本）
   Dockerfile            容器化构建（Linux，环境变量传 key）
   docker-compose.yml    一键启动（key 从 .env 读，日志挂卷）
@@ -359,6 +379,8 @@ gateway/
   mcp_smoke.py          MCP 壳冒烟测试：直接调用 + stdio 端到端拉起
   dashboard.py          成本看板：读日志生成自包含 dashboard.html
   dashboard.html        生成的看板（双击即看，可重跑刷新）
+  analyze_tasks.py      token 分布分析：算「上限→完成率」帮你定任务上限
+  reset_task.py         调网关 reset 端点，清零当前任务累计（run.bat reset）
   run_eval.py           评测：多轮对话 + 成本 + 打分
   judge.py              打分：主观 1~5 + 客观要点覆盖
   evalset.json          评测集（35 题 × 3 轮，长 system）

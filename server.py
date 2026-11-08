@@ -32,6 +32,8 @@ import budget
 import convert
 import protocols
 import router
+import task_limit
+import token_estimate
 import token_limit
 import usage_log
 from protocols import PROTOCOL_AUTH, ROUTES, SSEDecoder, STREAM_USAGE
@@ -108,26 +110,28 @@ _client = httpx.AsyncClient(timeout=httpx.Timeout(None, connect=20.0))
 def _check_gateway_key(request):
     """校验客户端带的是不是我们自己的网关 key。
 
-    返回 (通过吗, 用的是哪个头)。
+    返回 (通过吗, 用的是哪个头, key 字符串)。
     第二个值会写进日志 —— 它的用处是：**分清这次请求来自哪个客户端**。
     Qoder 走 Authorization，Claude Code 走 x-api-key。
+    第三个值给 task_limit 用 —— 任务累计按「客户端 key」分组。
     以后日志里出现"某类客户端特别费钱"，你就有据可查。
     """
     keys = [k for k in (CONFIG.get("gateway_keys") or []) if k]
     if not keys:
         # 没配 key = 本地裸跑模式，方便第一次验证
-        return True, "none-configured"
+        return True, "none-configured", ""
 
     h = request.headers
     authz = h.get("authorization") or ""
     if authz.lower().startswith("bearer "):
-        return (authz.split(" ", 1)[1].strip() in keys), "authorization"
+        tok = authz.split(" ", 1)[1].strip()
+        return (tok in keys), "authorization", tok
 
     tok = h.get("x-api-key")
     if tok:
-        return (tok in keys), "x-api-key"
+        return (tok in keys), "x-api-key", tok
 
-    return False, "missing"
+    return False, "missing", ""
 
 
 def _err(message, etype, status):
@@ -161,6 +165,19 @@ def _token_err(message):
     )
 
 
+def _task_err(message):
+    """任务级累计 token 超限时的错误响应。
+
+    加 x-gateway-task-limit 头，让客户端能一眼认出「这是被任务累计上限拦的」，
+    而不是上游坏了、也不是单次请求太大。
+    """
+    return JSONResponse(
+        {"error": {"message": message, "type": "gateway_task_limit_exceeded"}},
+        status_code=402,
+        headers={"x-gateway-task-limit": "exceeded"},
+    )
+
+
 def _pick_response_headers(resp):
     """只挑几个该带回去的头。
 
@@ -186,7 +203,7 @@ async def _handle(request, route):
     protocol = route_info["protocol"]
     request_id = uuid.uuid4().hex[:12]
 
-    passed, client_hint = _check_gateway_key(request)
+    passed, client_hint, client_key = _check_gateway_key(request)
     if not passed:
         return _err(
             "网关密钥不对。客户端里填的 API Key 应该等于 config.json 里的 gateway_keys，"
@@ -307,13 +324,20 @@ async def _handle(request, route):
         if budget_reject:
             return _budget_err(budget_reject[1])
 
+        # 本次输入估算（加权口径，中文不再低估 4 倍）
+        input_tokens_est = stats["prompt_tokens_est"] + stats["system_tokens_est"]
+
         token_reject = token_limit.check_input(
             CONFIG,
-            prompt_chars=stats["prompt_chars"],
-            system_chars=stats["system_chars"],
+            prompt_tokens=stats["prompt_tokens_est"],
+            system_tokens=stats["system_tokens_est"],
         )
         if token_reject:
             return _token_err(token_reject[1])
+
+        task_reject = task_limit.check(CONFIG, client_key, input_tokens_est)
+        if task_reject:
+            return _task_err(task_reject[1])
 
     base_record = {
         "request_id": request_id,
@@ -335,6 +359,7 @@ async def _handle(request, route):
         "injected_stream_options": injected,
         "explicit_cache": cache_injected,
         "output_clamped": output_clamped,
+        "task_used_before": task_limit.get_used(CONFIG, client_key),
         # 这条请不清算进成本。像 count_tokens 这种端点也会打日志，
         # 但它不产生费用 —— 不标出来，汇总时就会莫名多出一堆 0 拉低均值。
         "billable": billable,
@@ -394,6 +419,13 @@ async def _handle(request, route):
         # "上游给的数字"和"我们自己数的数字"绝对不能混在一起算
         reported = bool(usage)
         usage["usage_reported"] = reported
+        # 任务累计：把本次真值累进当前任务（只对计费端点，count_tokens 这类不算）
+        if billable:
+            task_limit.accumulate(
+                CONFIG, client_key,
+                input_tokens=usage.get("input_tokens"),
+                output_tokens=usage.get("output_tokens"),
+            )
         usage_log.append(CONFIG, dict(
             base_record, ok=True, status=resp.status_code, retry_count=retries,
             latency_ms=_ms(), error_kind=None, **usage,
@@ -425,7 +457,7 @@ async def _handle(request, route):
     if need_convert:
         translator = convert.OpenAIStreamToAnthropic(
             virtual_model,
-            estimated_input_tokens=max(1, (stats["prompt_chars"] + stats["system_chars"]) // 4),
+            estimated_input_tokens=max(1, stats["prompt_tokens_est"] + stats["system_tokens_est"]),
         )
 
     async def _relay():
@@ -474,6 +506,13 @@ async def _handle(request, route):
         finally:
             await resp.aclose()
             u = usage.as_dict()
+            # 任务累计：不管正常结束还是客户端断线，都要把已产生的 token 记进去
+            if billable:
+                task_limit.accumulate(
+                    CONFIG, client_key,
+                    input_tokens=u["input_tokens"],
+                    output_tokens=u["output_tokens"],
+                )
             usage_log.append(CONFIG, dict(
                 base_record,
                 ok=finished,
@@ -526,7 +565,7 @@ async def list_models(request: Request):
     只列 config.json 里的**对外名**（gw-*），不列上游真名、更不列 key 的
     环境变量名 —— 「藏起上游是谁」正是网关存在的意义之一。
     """
-    passed, _hint = _check_gateway_key(request)
+    passed, _hint, _key = _check_gateway_key(request)
     if not passed:
         return _err("网关密钥不对。", "gateway_auth", 401)
 
@@ -537,6 +576,29 @@ async def list_models(request: Request):
             {"id": name, "object": "model", "created": created, "owned_by": "token-gateway"}
             for name in sorted((CONFIG.get("models") or {}).keys())
         ],
+    }
+
+
+@app.post("/v1/task/reset")
+async def reset_task(request: Request):
+    """手动结束当前任务、开始新任务：把当前 key 的累计 token 清零。
+
+    配合 task_limit（config.json 的 task_limit 块）使用 ——
+    你在开始一个新任务前调一次，网关就把「已累计」归零，重新计。
+    手动对话场景下，这个动作决定了「一个任务」的边界在哪里。
+    """
+    passed, _hint, key = _check_gateway_key(request)
+    if not passed:
+        return _err("网关密钥不对。", "gateway_auth", 401)
+
+    used_before = task_limit.get_used(CONFIG, key)
+    task_limit.reset(CONFIG, key)
+    return {
+        "ok": True,
+        "task": "reset",
+        "used_before": used_before,
+        "now": 0,
+        "key": key or "(none-configured)",
     }
 
 

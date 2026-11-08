@@ -34,6 +34,20 @@ if /i "%~1"=="dashboard" (
   exit /b 0
 )
 
+if /i "%~1"=="reset" (
+  ".venv\Scripts\python.exe" reset_task.py
+  echo.
+  pause >nul
+  exit /b 0
+)
+
+if /i "%~1"=="analyze" (
+  ".venv\Scripts\python.exe" analyze_tasks.py
+  echo.
+  pause >nul
+  exit /b 0
+)
+
 echo.
 echo   网关已启动： http://127.0.0.1:8317
 echo   Qoder 里 Base URL 填：  http://127.0.0.1:8317/v1

@@ -45,7 +45,13 @@
     "enabled": false,
     "max_input_tokens": 0,
     "max_output_tokens": 0,
-    "_说明": "单次请求的 token 上限（输入预检 + 输出钳制）。enabled=false=不限制。max_input_tokens=单次请求输入 token 的估算上限（按字符数//4 粗估，0=不限），超了转发前拒（HTTP 402）；max_output_tokens=输出 token 上限（0=不限），只收紧客户端已设的 max_tokens、不放宽。与 budget 的区别：budget 管累计金额，这里管单次 token 数。"
+    "_说明": "单次请求的 token 上限（输入预检 + 输出钳制）。enabled=false=不限制。max_input_tokens=单次请求输入 token 的估算上限（按 token_estimate 的语言感知加权估算，中文~1token/字、英文~4字符/1token，0=不限），超了转发前拒（HTTP 402）；max_output_tokens=输出 token 上限（0=不限），只收紧客户端已设的 max_tokens、不放宽。与 budget 的区别：budget 管累计金额，这里管单次 token 数。"
+  },
+
+  "task_limit": {
+    "enabled": false,
+    "max_tokens": 0,
+    "_说明": "任务级累计 token 上限（手动任务）。enabled=false=不限制。max_tokens=一个任务（从一次 reset 到下一次 reset）累计 input+output 的最大 token 数（0=不限）。任务边界由用户手动控制：开始新任务前调 POST /v1/task/reset 清零。累计口径=input+output 全算（含缓存命中）。转发前只拦「已累计 + 本次输入加权估算」超限（HTTP 402，带 x-gateway-task-limit 头），输出靠 token_limit 的单次钳制 + 转发后真值累加（所以最后一次请求可能有少量超冲）。状态持久化在 logs/task_state.json，重启不丢。"
   },
 
   "models": {

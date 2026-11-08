@@ -4,47 +4,46 @@
 import token_limit
 
 
-# ---- check_input：输入预检 ----
+# ---- check_input：输入预检（收的是「已估算好的 token 数」）----
 
 def test_check_input_disabled_returns_none():
     cfg = {"token_limit": {"enabled": False, "max_input_tokens": 100}}
-    assert token_limit.check_input(cfg, prompt_chars=4000, system_chars=0) is None
+    assert token_limit.check_input(cfg, prompt_tokens=400, system_tokens=0) is None
 
 
 def test_check_input_zero_cap_returns_none():
     cfg = {"token_limit": {"enabled": True, "max_input_tokens": 0}}
-    assert token_limit.check_input(cfg, prompt_chars=4000, system_chars=0) is None
+    assert token_limit.check_input(cfg, prompt_tokens=400, system_tokens=0) is None
 
 
 def test_check_input_missing_block_returns_none():
-    assert token_limit.check_input({}, prompt_chars=4000, system_chars=0) is None
+    assert token_limit.check_input({}, prompt_tokens=400, system_tokens=0) is None
 
 
 def test_check_input_under_cap_returns_none():
-    # 400 字符 // 4 = 100 token，正好等于上限 100 → 不拦（边界是「超了才拦」）
+    # 100 token 正好等于上限 → 不拦（边界是「超了才拦」）
     cfg = {"token_limit": {"enabled": True, "max_input_tokens": 100}}
-    assert token_limit.check_input(cfg, prompt_chars=400, system_chars=0) is None
+    assert token_limit.check_input(cfg, prompt_tokens=100, system_tokens=0) is None
 
 
 def test_check_input_equality_is_pass():
-    # 正好 100 token 也放行，只有 > 才拦
+    # prompt + system 正好等于上限也放行，只有 > 才拦
     cfg = {"token_limit": {"enabled": True, "max_input_tokens": 100}}
-    assert token_limit.check_input(cfg, prompt_chars=200, system_chars=200) is None
+    assert token_limit.check_input(cfg, prompt_tokens=50, system_tokens=50) is None
 
 
 def test_check_input_over_cap_returns_402():
-    # 1000 字符 // 4 = 250 token > 100 → 拦
     cfg = {"token_limit": {"enabled": True, "max_input_tokens": 100}}
-    result = token_limit.check_input(cfg, prompt_chars=1000, system_chars=0)
+    result = token_limit.check_input(cfg, prompt_tokens=250, system_tokens=0)
     assert result is not None
     assert result[0] == 402
     assert "250" in result[1] and "100" in result[1]
 
 
 def test_check_input_sums_prompt_and_system():
-    # prompt 300 + system 200 = 500 字符 → 125 token > 100 → 拦
+    # 70 + 60 = 130 > 100 → 拦
     cfg = {"token_limit": {"enabled": True, "max_input_tokens": 100}}
-    result = token_limit.check_input(cfg, prompt_chars=300, system_chars=200)
+    result = token_limit.check_input(cfg, prompt_tokens=70, system_tokens=60)
     assert result is not None
     assert result[0] == 402
 
