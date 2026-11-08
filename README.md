@@ -246,6 +246,7 @@ config.json 里 `routing.enabled` 控制（默认 false = 纯透传）。**只�
 **怎么用**：
 
 - 开始新任务前清零：`run.bat reset`（或 `python reset_task.py`），它会自动读 config 里的地址和 key，不用你记端口。
+- 查当前任务进度：`run.bat status`（或 `python reset_task.py status`）——已累计多少 token、上限多少、还剩多少。
 - 定 `max_tokens` 数值：先跑 `run.bat analyze`（`analyze_tasks.py`），它会从日志算出「任务 token 分位数」和「上限 → 完成率」对照表，你照着 P90~P95 附近选一个值，不用拍脑袋。
 
 ### MCP 壳（查账，不转发）
@@ -318,7 +319,7 @@ pip install pytest   # 一次性
 pytest tests/ -v
 ```
 
-62 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离）等。
+65 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询）等。
 
 ---
 
@@ -369,7 +370,7 @@ gateway/
   usage_log.py          记账：只记事实 + 统计量，jsonl 追加写
   config.json           映射表 + 价格 + 缓存/路由开关。只写变量名，不写 key
   run_gateway.py        常驻启动（从注册表读 key）
-  run.bat               双击启动；run.bat test 自验 / dashboard 看板 / reset 重置任务 / analyze 分析上限
+  run.bat               双击启动；run.bat test 自验 / dashboard 看板 / reset 重置任务 / status 查任务 / analyze 分析上限
   requirements.txt      依赖清单（fastapi/uvicorn/httpx，已锁版本）
   Dockerfile            容器化构建（Linux，环境变量传 key）
   docker-compose.yml    一键启动（key 从 .env 读，日志挂卷）
@@ -380,7 +381,7 @@ gateway/
   dashboard.py          成本看板：读日志生成自包含 dashboard.html
   dashboard.html        生成的看板（双击即看，可重跑刷新）
   analyze_tasks.py      token 分布分析：算「上限→完成率」帮你定任务上限
-  reset_task.py         调网关 reset 端点，清零当前任务累计（run.bat reset）
+  reset_task.py         和网关交互任务状态：查进度 / 清零累计（run.bat status / reset）
   run_eval.py           评测：多轮对话 + 成本 + 打分
   judge.py              打分：主观 1~5 + 客观要点覆盖
   evalset.json          评测集（35 题 × 3 轮，长 system）

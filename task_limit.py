@@ -113,3 +113,24 @@ def reset(config, key):
         st = _load(config)
         st.pop(key, None)
         _save(config)
+
+
+def status(config, key):
+    """查该 key 当前任务的累计状态（只读，给查询端点 / 脚本用）。"""
+    tc = config.get("task_limit") or {}
+    enabled = bool(tc.get("enabled"))
+    max_tokens = tc.get("max_tokens") or 0
+    with _lock:
+        st = _load(config)
+        entry = st.get(key) or {}
+    used = int(entry.get("tokens") or 0)
+    remaining = None
+    if enabled and max_tokens > 0:
+        remaining = max(0, max_tokens - used)
+    return {
+        "enabled": enabled,
+        "max_tokens": max_tokens,
+        "used_tokens": used,
+        "remaining_tokens": remaining,
+        "started_at": entry.get("started_at"),
+    }

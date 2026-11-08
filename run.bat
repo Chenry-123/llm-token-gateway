@@ -41,6 +41,13 @@ if /i "%~1"=="reset" (
   exit /b 0
 )
 
+if /i "%~1"=="status" (
+  ".venv\Scripts\python.exe" reset_task.py status
+  echo.
+  pause >nul
+  exit /b 0
+)
+
 if /i "%~1"=="analyze" (
   ".venv\Scripts\python.exe" analyze_tasks.py
   echo.

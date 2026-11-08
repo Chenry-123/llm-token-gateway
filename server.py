@@ -602,6 +602,21 @@ async def reset_task(request: Request):
     }
 
 
+@app.get("/v1/task/status")
+async def task_status(request: Request):
+    """查当前任务（按你的 key）累计用了多少 token、离上限还差多少。
+
+    配合 task_limit 用 —— 设了任务上限却查不到进度，等于黑盒。
+    这个端点让「当前任务跑到哪了」可见。
+    """
+    passed, _hint, key = _check_gateway_key(request)
+    if not passed:
+        return _err("网关密钥不对。", "gateway_auth", 401)
+
+    st = task_limit.status(CONFIG, key)
+    return {"ok": True, "task": "status", "key": key or "(none-configured)", **st}
+
+
 @app.get("/healthz")
 async def healthz():
     """给客户端和自验脚本用的探活。也顺便告诉你网关认识哪些模型名。"""

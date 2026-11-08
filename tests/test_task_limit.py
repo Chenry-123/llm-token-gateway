@@ -75,3 +75,31 @@ def test_different_keys_isolated(tmp_path):
     cfg = _cfg(tmp_path, max_tokens=1000)
     task_limit.accumulate(cfg, "key-a", input_tokens=100, output_tokens=0)
     assert task_limit.get_used(cfg, "key-b") == 0
+
+
+# ---- status：查询当前任务状态 ----
+
+def test_status_disabled(tmp_path):
+    cfg = _cfg(tmp_path, enabled=False)
+    st = task_limit.status(cfg, "k1")
+    assert st["enabled"] is False
+    assert st["remaining_tokens"] is None
+    assert st["used_tokens"] == 0
+
+
+def test_status_reports_used_and_remaining(tmp_path):
+    cfg = _cfg(tmp_path, max_tokens=100)
+    task_limit.accumulate(cfg, "k1", input_tokens=20, output_tokens=10)
+    st = task_limit.status(cfg, "k1")
+    assert st["enabled"] is True
+    assert st["max_tokens"] == 100
+    assert st["used_tokens"] == 30
+    assert st["remaining_tokens"] == 70
+
+
+def test_status_remaining_floor_at_zero(tmp_path):
+    # 累计超过上限时，剩余不为负数，钳在 0
+    cfg = _cfg(tmp_path, max_tokens=100)
+    task_limit.accumulate(cfg, "k1", input_tokens=150, output_tokens=0)
+    st = task_limit.status(cfg, "k1")
+    assert st["remaining_tokens"] == 0
