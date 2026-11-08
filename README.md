@@ -312,14 +312,14 @@ MCP 壳是给**客户端**查账的（机器读）；看板是给**人**看的�
 
 ### 单元测试
 
-核心逻辑（四段计费 / 路由 / 预算闸门 / 单次 token 上限 / 任务累计上限 / token 估算）有 pytest 单元测试锁边界，在 `tests/` 目录：
+核心逻辑（四段计费 / 路由 / 预算闸门 / 单次 token 上限 / 任务累计上限 / token 估算 / 协议转换）有 pytest 单元测试锁边界，在 `tests/` 目录：
 
 ```bash
 pip install pytest   # 一次性
 pytest tests/ -v
 ```
 
-65 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询）等。
+104 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询）、协议转换（system 位置、工具调用 tool_use/tool_calls 双向、tool_result、图片、stop_reason、usage、流式 SSE 事件序列）等。
 
 ---
 
@@ -389,6 +389,7 @@ gateway/
   eval_*.json           四份评测结果（基线/缓存/路由/叠加）
   WRITEUP.md            项目复盘（给面试官看的完整复盘，8 章）
   ARTICLE.md            项目复盘文章（面向读者的传播版）
+  tests/                104 个 pytest 单元测试（计费/路由/预算/token 上限/任务累计/估算/协议转换）
 ```
 
 **要改代码**：PowerShell 里 `cd` 到 `gateway`，敲 `code .`（`code` 就是 Qoder IDE）。
