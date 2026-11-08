@@ -41,6 +41,13 @@
     "_说明": "预算闸门（把「降本」从「每次更便宜」补全到「总量不失控」）。enabled=false=纯透传不拦。enabled=true 后：window=total 从日志第一行累计，window=daily 每天零点重置。cap_yuan=人民币上限，窗口内累计花费（按当前单价重算历史日志）达到它就拒（HTTP 402）。preflight=true 时还会在发请求前按「本次输入全价无缓存」的最坏情况预检，防一次超大上下文直接冲爆预算；false 则只靠硬上限（可能有少量超冲）。注意：拦截只对计费端点生效，count_tokens 之类不花钱的端点不受限。"
   },
 
+  "token_limit": {
+    "enabled": false,
+    "max_input_tokens": 0,
+    "max_output_tokens": 0,
+    "_说明": "单次请求的 token 上限（输入预检 + 输出钳制）。enabled=false=不限制。max_input_tokens=单次请求输入 token 的估算上限（按字符数//4 粗估，0=不限），超了转发前拒（HTTP 402）；max_output_tokens=输出 token 上限（0=不限），只收紧客户端已设的 max_tokens、不放宽。与 budget 的区别：budget 管累计金额，这里管单次 token 数。"
+  },
+
   "models": {
     "gw-qwen": {
       "protocol": "openai",

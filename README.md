@@ -49,6 +49,7 @@
 | ✅ **显式缓存** | 主动给 system 打 `cache_control`，确定性命中（隐式缓存命中率不确定，显式是确定性的） |
 | ✅ **模型路由** | easy 题自动换成便宜模型（qwen-flash），medium/hard 仍走 qwen-plus-latest |
 | ✅ **预算闸门** | 按日志累计成本，超预算就在转发前拒（402），把「省钱」升级成「控钱」 |
+| ✅ **单次 token 上限** | 输入预检（超了转发前拒）+ 输出钳制（收紧 max_tokens），管「单次请求」的 token 数 | 
 | ✅ 失败分类与退避重试 | 只在上游还没吐第一个字节之前重试 |
 | ✅ 只记统计量，不记内容 | 日志可以安全公开 |
 | ✅ `GET /v1/models`、`count_tokens` | 客户端「添加模型」和 Claude Code 启动都要调 |
@@ -71,8 +72,9 @@ flowchart TB
     D --> E["③ 协议转换<br/>anthropic → openai（convert.py）"]
     E --> F["④ 显式缓存注入<br/>给 system 打 cache_control（protocols.py）"]
     F --> G["⑤ 预算闸门<br/>超预算转发前拒（budget.py）"]
-    G --> H["⑥ 转发上游<br/>换地址/换 key/保留流/重试（upstream.py）"]
-    H --> I["⑦ 记账<br/>四段计费 → jsonl（pricing.py / usage_log.py）"]
+    G --> G2["⑥ 单次 token 上限<br/>输入预检 + 输出钳制（token_limit.py）"]
+    G2 --> H["⑦ 转发上游<br/>换地址/换 key/保留流/重试（upstream.py）"]
+    H --> I["⑧ 记账<br/>四段计费 → jsonl（pricing.py / usage_log.py）"]
     H --> J["上游厂商<br/>百炼 / 火山 / 混元 / Anthropic"]
 ```
 
@@ -217,6 +219,17 @@ config.json 里 `routing.enabled` 控制（默认 false = 纯透传）。**只�
 网关的闸门按「你自己的预算」在本地拦，还能按天滚动、不依赖控制台。拦下时返回
 `x-gateway-budget: exceeded` 头 + 错误类型 `gateway_budget_exceeded`，一眼能认出是预算拦截、不是上游坏了。
 
+### 单次 token 上限（控单次）
+
+预算闸门管「累计花了多少钱」，但它不拦「单次请求喂了多大的上下文 / 让模型吐了多少」。这个模块管**单次请求的 token 数**，两件事：
+
+- **输入预检**：转发前按「字符数 // 4」估算本次输入 token，超了直接拒（HTTP 402），防一次喂一个超大上下文。估算是英文口径、中文会偏低，所以是**粗略上限**不是精确计数——刻意不引入 tiktoken 这类分词依赖，保持零重依赖、可离线自验。
+- **输出钳制**：给请求体收紧 `max_tokens`（只收紧、不放宽，客户端自己设了更小的就不动它），防模型一次吐太多。
+
+`config.json` 的 `token_limit` 段控制：`enabled`（默认 false）、`max_input_tokens`（0=不限）、`max_output_tokens`（0=不限）。拦下时返回 `x-gateway-token-limit: exceeded` 头 + 错误类型 `gateway_token_limit_exceeded`，和预算拦截一样能一眼认出来源。
+
+> 注：这管的是「**单次**请求」。如果你要的是「一个**任务**（多轮对话）累计不超过多少 token」，那是另一件事——需要网关认得「哪些请求属于同一个任务」（session id），要从无状态变有状态，复杂度高得多，目前未做。
+
 ### MCP 壳（查账，不转发）
 
 省钱动作发生在**网关**（夹在客户端和厂商之间强制执行）；MCP 是**插件形态的外壳**，
@@ -280,14 +293,14 @@ MCP 壳是给**客户端**查账的（机器读）；看板是给**人**看的�
 
 ### 单元测试
 
-核心逻辑（四段计费 / 路由 / 预算闸门）有 pytest 单元测试锁边界，在 `tests/` 目录：
+核心逻辑（四段计费 / 路由 / 预算闸门 / 单次 token 上限）有 pytest 单元测试锁边界，在 `tests/` 目录：
 
 ```bash
 pip install pytest   # 一次性
 pytest tests/ -v
 ```
 
-31 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检等。
+44 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检（拦截/放行/边界相等）与输出钳制（收紧/不放宽/不钳制）等。
 
 ---
 
@@ -330,6 +343,7 @@ gateway/
   convert.py            协议转换（anthropic→openai，流式+非流式）
   pricing.py            四段计费（按 billed_model，减缓存重复计费）
   budget.py             预算闸门（按日志累计成本，超预算转发前拒）
+  token_limit.py        单次 token 上限（输入预检 + 输出钳制）
   router.py             模型路由（猜难度 + 同厂商降档守卫）
   upstream.py           跟上游说话：换地址换key、保留流、失败重试
   usage_log.py          记账：只记事实 + 统计量，jsonl 追加写

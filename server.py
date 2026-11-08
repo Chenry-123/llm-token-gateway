@@ -32,6 +32,7 @@ import budget
 import convert
 import protocols
 import router
+import token_limit
 import usage_log
 from protocols import PROTOCOL_AUTH, ROUTES, SSEDecoder, STREAM_USAGE
 from upstream import UpstreamError, build_headers, build_url, classify_error, open_upstream
@@ -144,6 +145,19 @@ def _budget_err(message):
         {"error": {"message": message, "type": "gateway_budget_exceeded"}},
         status_code=402,
         headers={"x-gateway-budget": "exceeded"},
+    )
+
+
+def _token_err(message):
+    """单次请求 token 超限时的错误响应。
+
+    和 _budget_err 一样加一个 x-gateway-token-limit 头，让客户端能一眼认出
+    「这是被 token 上限拦的，不是上游坏了」。
+    """
+    return JSONResponse(
+        {"error": {"message": message, "type": "gateway_token_limit_exceeded"}},
+        status_code=402,
+        headers={"x-gateway-token-limit": "exceeded"},
     )
 
 
@@ -265,6 +279,9 @@ async def _handle(request, route):
         upstream_protocol, body, (CONFIG.get("cache") or {}).get("explicit", False)
     )
 
+    # ---- 单次请求 token 上限：输出钳制（body 已是上游形状，max_tokens 打在最终形态上）----
+    output_clamped = token_limit.clamp_output(CONFIG, body)
+
     # ！ 转换时，上游路径和认证头都得按【上游协议】取，不能沿用路由的：
     #    客户端走 /v1/messages（anthropic），但上游百炼要 /chat/completions + Bearer 头。
     upstream_path = route_info["upstream_path"]
@@ -290,6 +307,14 @@ async def _handle(request, route):
         if budget_reject:
             return _budget_err(budget_reject[1])
 
+        token_reject = token_limit.check_input(
+            CONFIG,
+            prompt_chars=stats["prompt_chars"],
+            system_chars=stats["system_chars"],
+        )
+        if token_reject:
+            return _token_err(token_reject[1])
+
     base_record = {
         "request_id": request_id,
         "route": route,
@@ -309,6 +334,7 @@ async def _handle(request, route):
         "stream": is_stream,
         "injected_stream_options": injected,
         "explicit_cache": cache_injected,
+        "output_clamped": output_clamped,
         # 这条请不清算进成本。像 count_tokens 这种端点也会打日志，
         # 但它不产生费用 —— 不标出来，汇总时就会莫名多出一堆 0 拉低均值。
         "billable": billable,
