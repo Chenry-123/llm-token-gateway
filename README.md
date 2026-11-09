@@ -320,7 +320,7 @@ pip install pytest   # 一次性
 pytest tests/ -v
 ```
 
-110 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询/session 分组/过期清理）、协议转换（system 位置、工具调用 tool_use/tool_calls 双向、tool_result、图片、stop_reason、usage、流式 SSE 事件序列）、任务分组键（session id 优先 / key 兜底）等。
+113 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询/session 分组/过期清理）、协议转换（system 位置、工具调用 tool_use/tool_calls 双向、tool_result、图片、stop_reason、usage、流式 SSE 事件序列）、任务分组键（session id 优先 / key 兜底）、任务归组（session 精确 / 时间间隔）等。
 
 ---
 
@@ -381,7 +381,7 @@ gateway/
   mcp_smoke.py          MCP 壳冒烟测试：直接调用 + stdio 端到端拉起
   dashboard.py          成本看板：读日志生成自包含 dashboard.html
   dashboard.html        生成的看板（双击即看，可重跑刷新）
-  analyze_tasks.py      token 分布分析：算「上限→完成率」帮你定任务上限
+  analyze_tasks.py      token 分布分析：算「上限→完成率」帮你定任务上限（支持按 session 精确归组）
   reset_task.py         和网关交互任务状态：查进度 / 清零累计（run.bat status / reset）
   run_eval.py           评测：多轮对话 + 成本 + 打分
   judge.py              打分：主观 1~5 + 客观要点覆盖

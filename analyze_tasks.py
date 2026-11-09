@@ -71,8 +71,8 @@ def _ts(r):
         return 0.0
 
 
-def group_tasks(rows, gap_minutes):
-    """按时间排序，相邻间隔 > gap_minutes 就切一个新任务。返回任务 token 列表。"""
+def _group_by_gap(rows, gap_minutes):
+    """时间间隔启发式归组：按时间排序，相邻间隔 > gap_minutes 切新任务。"""
     rows = sorted(rows, key=_ts)
     gap = gap_minutes * 60
     tasks = []
@@ -88,6 +88,27 @@ def group_tasks(rows, gap_minutes):
     if cur:
         tasks.append(cur)
     return tasks
+
+
+def group_tasks(rows, gap_minutes):
+    """把请求归成「任务」，返回 (tasks, n_session, n_gap)。
+
+    优先按 session_id 精确归组（Claude Code agent 任务的天然边界）；
+    没有 session_id 的记录（老日志 / 手动对话）退回时间间隔启发式。
+    """
+    with_session = [r for r in rows if r.get("session_id")]
+    without_session = [r for r in rows if not r.get("session_id")]
+
+    by_session = {}
+    for r in with_session:
+        sid = r["session_id"]
+        by_session[sid] = by_session.get(sid, 0) + _tok(r)
+
+    tasks = list(by_session.values())
+    if without_session:
+        tasks.extend(_group_by_gap(without_session, gap_minutes))
+
+    return tasks, len(by_session), len(tasks) - len(by_session)
 
 
 def _fmt_pct(vals):
@@ -132,8 +153,14 @@ def main():
     print("\n【单次请求 input+output token 分位数】")
     print("  " + _fmt_pct(per_req) + "  Max=%d" % max(per_req))
 
-    tasks = group_tasks(rows, args.gap)
-    print("\n【任务累计 token 分位数】（按间隔 <= %d 分钟归组，共 %d 个任务）" % (args.gap, len(tasks)))
+    tasks, n_session, n_gap = group_tasks(rows, args.gap)
+    if n_session and n_gap:
+        mode = "按 session 精确归组 %d 个 + 按间隔归组 %d 个" % (n_session, n_gap)
+    elif n_session:
+        mode = "按 session id 精确归组"
+    else:
+        mode = "按间隔 <= %d 分钟归组" % args.gap
+    print("\n【任务累计 token 分位数】（%s，共 %d 个任务）" % (mode, len(tasks)))
     print("  " + _fmt_pct(tasks) + "  Max=%d" % max(tasks))
 
     # 上限 → 完成率对照表
@@ -153,9 +180,10 @@ def main():
     print("\n【怎么读】")
     print("  - 完成率 = 任务累计 token <= 上限 的任务占比。上限越低越省，但完成率越低。")
     print("  - 甜点通常在 P90~P95 附近：只牺牲 5%~10% 完成率，却能拦下长尾里最长的那些任务。")
-    print("  - 归组用的是时间间隔启发式，历史日志没有 session id，不精确；")
-    print("    若某天请求是批量评测（一天几百条、token 高度集中），会被并成一个巨大任务，归组失真。")
-    print("  - 启用 task_limit 后，新日志会带 task_used_before，届时可据此更准地还原任务边界。")
+    print("  - 归组：有 session_id 的记录按 session 精确归组（Claude Code agent 任务的天然边界）；")
+    print("    没有 session_id 的老日志退回时间间隔启发式——不精确，批量评测会被并成巨大任务。")
+    print("  - 让归组变准的办法：用 Claude Code 走网关跑任务，日志就会带 session_id，")
+    print("    届时「任务 token 分布」就是真实的 agent 任务分布，可直接据此定上限。")
 
 
 if __name__ == "__main__":
