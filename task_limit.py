@@ -1,22 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-task_limit.py —— 任务级累计 token 上限（手动任务）
+task_limit.py —— 任务级累计 token 上限（手动任务 + Claude Code agent 任务）
 
 和 token_limit.py 的分工：
     token_limit.py 管「单次请求」的 token 数（这一条消息的输入/输出各一个硬顶）。
-    本模块管「一个任务」累计用了多少 token：从用户手动「开始一个任务」
-    （reset）到下一次 reset 之间，所有请求的 input + output 累计不能超过上限。
+    本模块管「一个任务」累计用了多少 token，跨多次请求。
 
-任务边界：由用户手动控制。
-    网关按「客户端 key」累计当前任务的 token，用户开始新任务前调
-    POST /v1/task/reset 清零。这样网关无需理解「哪些请求属于同一个对话」，
-    边界完全由人定 —— 手动场景（Qoder 手动对话）下最干净。
+两种任务边界（分组键由 server.py 决定）：
+    1. 手动任务（Qoder 等，无会话标识）：按「客户端 key」累计，
+       用户开始新任务前调 POST /v1/task/reset 清零，边界由人定。
+    2. Claude Code agent 任务：Claude Code 走网关时每个请求都带
+       x-claude-code-session-id 头，一次 claude -p 跑一个任务 = 一个 session，
+       session id 天然就是任务边界，网关按它自动累计、无需 reset。
 
 累计口径（用户拍板）：input + output 全算（含缓存命中），
     对齐「这次任务总共让模型处理/生成了多少 token」。
 
-状态：持久化到 logs/task_state.json（进程重启不丢）。每个 key 一行：
-    {"<gateway_key>": {"tokens": 12345, "started_at": "2026-11-08 15:37:05"}}
+状态：持久化到 logs/task_state.json（进程重启不丢）。每条一行：
+    {"<key>": {"tokens": 12345, "started_at": "...", "last_seen": 1752...}}
+    手动 key 长期保留；session: 前缀的条目（agent 任务）超过 24 小时没活动
+    会自动清理，防止 state 文件无限增长。
 
 拦 / 累加的时机（在 server.py 里接入）：
     转发前 check()：已累计 + 本次输入估算（加权）> 上限 → 拦（HTTP 402）。
@@ -33,6 +36,13 @@ import time
 # 模块级状态缓存 + 锁。手动对话并发极低，锁只是为了「读-改-写」不被交错。
 _lock = threading.Lock()
 _cache = None
+
+# 分组键前缀：session: 表示 Claude Code agent 任务（自动边界，可过期清理）；
+# 无前缀的是手动任务的客户端 key（长期保留）。
+_SESSION_PREFIX = "session:"
+# agent session 超过这个秒数没活动就清理。一次 claude 任务通常几分钟，
+# 24 小时没活动基本可认定是已结束的历史任务。
+_EXPIRE_SECONDS = 24 * 3600
 
 
 def _state_path(config):
@@ -62,6 +72,16 @@ def _save(config):
     os.replace(tmp, p)
 
 
+def _cleanup(st):
+    """删掉过期的 agent session 条目，防止 state 文件无限增长。"""
+    now = time.time()
+    for k in list(st.keys()):
+        if k.startswith(_SESSION_PREFIX):
+            last = st[k].get("last_seen") or 0
+            if now - last > _EXPIRE_SECONDS:
+                del st[k]
+
+
 def _now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -84,12 +104,14 @@ def check(config, key, estimated_incoming):
 
     used = get_used(config, key)
     if used + int(estimated_incoming or 0) > max_tokens:
+        if key.startswith(_SESSION_PREFIX):
+            hint = "这是 Claude Code 的一次 agent 任务，被拦后该任务会中断；请调高 task_limit.max_tokens。"
+        else:
+            hint = "请调高 task_limit.max_tokens，或调 POST /v1/task/reset 结束当前任务、开始新任务。"
         return (
             402,
-            "本任务已累计 %d token，本次输入预估 %d token，合计将超过任务上限 %d。"
-            "请调高 config.json 里的 task_limit.max_tokens，"
-            "或调 POST /v1/task/reset 结束当前任务、开始新任务。"
-            % (used, int(estimated_incoming or 0), max_tokens),
+            "本任务已累计 %d token，本次输入预估 %d token，合计将超过任务上限 %d。%s"
+            % (used, int(estimated_incoming or 0), max_tokens, hint),
         )
     return None
 
@@ -103,7 +125,9 @@ def accumulate(config, key, input_tokens, output_tokens):
         st[key] = {
             "tokens": int(cur.get("tokens") or 0) + added,
             "started_at": cur.get("started_at") or _now(),
+            "last_seen": time.time(),
         }
+        _cleanup(st)
         _save(config)
 
 

@@ -51,7 +51,7 @@
   "task_limit": {
     "enabled": false,
     "max_tokens": 0,
-    "_说明": "任务级累计 token 上限（手动任务）。enabled=false=不限制。max_tokens=一个任务（从一次 reset 到下一次 reset）累计 input+output 的最大 token 数（0=不限）。任务边界由用户手动控制：开始新任务前调 POST /v1/task/reset 清零。累计口径=input+output 全算（含缓存命中）。转发前只拦「已累计 + 本次输入加权估算」超限（HTTP 402，带 x-gateway-task-limit 头），输出靠 token_limit 的单次钳制 + 转发后真值累加（所以最后一次请求可能有少量超冲）。状态持久化在 logs/task_state.json，重启不丢。"
+    "_说明": "任务级累计 token 上限（手动任务 + Claude Code agent 任务）。enabled=false=不限制。max_tokens=一个任务累计 input+output 的最大 token 数（0=不限）。两种任务边界：①手动任务（Qoder 等）按客户端 key 累计，开始新任务前调 POST /v1/task/reset 清零；②Claude Code agent 任务按 x-claude-code-session-id 请求头自动分组，一次 claude -p = 一个 session，无需 reset、任务结束边界自动结束。累计口径=input+output 全算（含缓存命中）。转发前只拦「已累计 + 本次输入加权估算」超限（HTTP 402，带 x-gateway-task-limit 头），输出靠 token_limit 的单次钳制 + 转发后真值累加（所以最后一次请求可能有少量超冲）。状态持久化在 logs/task_state.json，重启不丢；session 条目超过 24 小时没活动自动清理。"
   },
 
   "models": {

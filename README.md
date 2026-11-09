@@ -236,7 +236,8 @@ config.json 里 `routing.enabled` 控制（默认 false = 纯透传）。**只�
 
 单次上限管「一条消息」，但一个任务往往是几十条消息。任务级上限管「一个任务从头到尾累计用了多少 token」：
 
-- **任务边界由你手动划**：网关按「客户端 key」累计，你开始新任务前调一次 `POST /v1/task/reset` 清零，到下个 reset 之间就是一个任务。
+- **手动任务的边界由你划**（Qoder 等）：网关按「客户端 key」累计，你开始新任务前调一次 `POST /v1/task/reset` 清零，到下个 reset 之间就是一个任务。
+- **Claude Code agent 任务的边界自动识别**：Claude Code 走网关时每个请求都带 `x-claude-code-session-id` 头，一次 `claude -p` 跑一个任务 = 一个 session，网关按 session id 自动累计、**无需 reset**，任务跑完边界自动结束。
 - **累计口径**（input + output 全算，含缓存命中）：转发前拦「已累计 + 本次输入加权估算」超限（HTTP 402 + `x-gateway-task-limit` 头）；转发后拿上游 usage 真值累进。
 - **状态持久化**到 `logs/task_state.json`，网关重启不丢。
 - 一个诚实的边界：输出 token 转发前无法可靠预知（`max_tokens` 可能没设），所以输出侧靠「单次上限的输出钳制」兜底 + 转发后真值累加——**最后一次请求可能有少量超冲**，到下一次请求才会被拦。
@@ -319,7 +320,7 @@ pip install pytest   # 一次性
 pytest tests/ -v
 ```
 
-104 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询）、协议转换（system 位置、工具调用 tool_use/tool_calls 双向、tool_result、图片、stop_reason、usage、流式 SSE 事件序列）等。
+110 个用例覆盖：缓存不重复计费、uncached 归零、按 billed_model 计价、显式缓存价、难度边界（140/280 字）、同厂商降档守卫、预算硬上限/预检、token 上限的输入预检与输出钳制、加权 token 估算（中文 1 token/字、英文 4 字符/1 token）、任务累计上限（放行/拦截/累加/重置/持久化/多 key 隔离/状态查询/session 分组/过期清理）、协议转换（system 位置、工具调用 tool_use/tool_calls 双向、tool_result、图片、stop_reason、usage、流式 SSE 事件序列）、任务分组键（session id 优先 / key 兜底）等。
 
 ---
 

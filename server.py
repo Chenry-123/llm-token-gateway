@@ -134,6 +134,17 @@ def _check_gateway_key(request):
     return False, "missing", ""
 
 
+def _task_group(request, client_key):
+    """决定任务累计的分组键：Claude Code 的 session id 优先，否则用客户端 key。
+
+    Claude Code 走 ANTHROPIC_BASE_URL 时每个请求都带 x-claude-code-session-id，
+    一次 agent 任务 = 一个 session，天然是任务边界；没有这个头的客户端
+    （Qoder 等手动对话）退回按 key 累计，靠手动 reset 划边界。
+    """
+    session_id = (request.headers.get("x-claude-code-session-id") or "").strip()
+    return ("session:" + session_id) if session_id else client_key
+
+
 def _err(message, etype, status):
     return JSONResponse({"error": {"message": message, "type": etype}}, status_code=status)
 
@@ -211,6 +222,9 @@ async def _handle(request, route):
             "gateway_auth",
             401,
         )
+
+    # ---- 任务分组键：Claude Code 的 session id 优先，否则用客户端 key ----
+    task_group = _task_group(request, client_key)
 
     raw = await request.body()
     try:
@@ -335,7 +349,7 @@ async def _handle(request, route):
         if token_reject:
             return _token_err(token_reject[1])
 
-        task_reject = task_limit.check(CONFIG, client_key, input_tokens_est)
+        task_reject = task_limit.check(CONFIG, task_group, input_tokens_est)
         if task_reject:
             return _task_err(task_reject[1])
 
@@ -346,6 +360,7 @@ async def _handle(request, route):
         "upstream_protocol": upstream_protocol,
         "converted": need_convert,
         "client_hint": client_hint,
+        "session_id": session_id or None,
         "virtual_model": virtual_model,
         "upstream_model": upstream_model,
         # 路由相关：billed_model 是「成本按谁的单价算」。路由把 easy 请求换成了
@@ -359,7 +374,7 @@ async def _handle(request, route):
         "injected_stream_options": injected,
         "explicit_cache": cache_injected,
         "output_clamped": output_clamped,
-        "task_used_before": task_limit.get_used(CONFIG, client_key),
+        "task_used_before": task_limit.get_used(CONFIG, task_group),
         # 这条请不清算进成本。像 count_tokens 这种端点也会打日志，
         # 但它不产生费用 —— 不标出来，汇总时就会莫名多出一堆 0 拉低均值。
         "billable": billable,
@@ -422,7 +437,7 @@ async def _handle(request, route):
         # 任务累计：把本次真值累进当前任务（只对计费端点，count_tokens 这类不算）
         if billable:
             task_limit.accumulate(
-                CONFIG, client_key,
+                CONFIG, task_group,
                 input_tokens=usage.get("input_tokens"),
                 output_tokens=usage.get("output_tokens"),
             )
@@ -509,7 +524,7 @@ async def _handle(request, route):
             # 任务累计：不管正常结束还是客户端断线，都要把已产生的 token 记进去
             if billable:
                 task_limit.accumulate(
-                    CONFIG, client_key,
+                    CONFIG, task_group,
                     input_tokens=u["input_tokens"],
                     output_tokens=u["output_tokens"],
                 )

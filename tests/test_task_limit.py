@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """task_limit.py 的单元测试 —— 锁住任务级累计 token 上限的边界。"""
 
+import time
+
 import task_limit
 
 
@@ -103,3 +105,41 @@ def test_status_remaining_floor_at_zero(tmp_path):
     task_limit.accumulate(cfg, "k1", input_tokens=150, output_tokens=0)
     st = task_limit.status(cfg, "k1")
     assert st["remaining_tokens"] == 0
+
+
+# ---- session 分组（Claude Code agent 任务）与过期清理 ----
+
+def test_session_and_key_isolated(tmp_path):
+    # session:xxx 和手动 key 是两条独立的分组，互不干扰
+    cfg = _cfg(tmp_path, max_tokens=1000)
+    task_limit.accumulate(cfg, "session:abc", input_tokens=100, output_tokens=0)
+    task_limit.accumulate(cfg, "k1", input_tokens=50, output_tokens=0)
+    assert task_limit.get_used(cfg, "session:abc") == 100
+    assert task_limit.get_used(cfg, "k1") == 50
+
+
+def test_session_check_hint_mentions_agent(tmp_path):
+    # session 分组被拦时，提示语要说明「这是 agent 任务，会中断」
+    cfg = _cfg(tmp_path, max_tokens=100)
+    task_limit.accumulate(cfg, "session:abc", input_tokens=80, output_tokens=0)
+    result = task_limit.check(cfg, "session:abc", 30)
+    assert result is not None
+    assert "agent 任务" in result[1]
+
+
+def test_cleanup_removes_expired_sessions_keeps_key(tmp_path):
+    cfg = _cfg(tmp_path, max_tokens=1000)
+    task_limit.accumulate(cfg, "session:old", input_tokens=10, output_tokens=0)
+    task_limit.accumulate(cfg, "k1", input_tokens=10, output_tokens=0)
+
+    # 把 old session 的 last_seen 拨回 25 小时前，再触发一次 accumulate 清理
+    with task_limit._lock:
+        st = task_limit._load(cfg)
+        st["session:old"]["last_seen"] = time.time() - 25 * 3600
+        task_limit._save(cfg)
+
+    task_limit.accumulate(cfg, "session:new", input_tokens=5, output_tokens=0)
+
+    assert task_limit.get_used(cfg, "session:old") == 0   # 过期被清理
+    assert task_limit.get_used(cfg, "k1") == 10            # 手动 key 保留
+    assert task_limit.get_used(cfg, "session:new") == 5    # 新鲜 session 保留
